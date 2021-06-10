@@ -1,7 +1,6 @@
 /*
- * Copyright 2004-2013 H2 Group. Multiple-Licensed under the H2 License,
- * Version 1.0, and under the Eclipse Public License, Version 1.0
- * (http://h2database.com/html/license.html).
+ * Copyright 2004-2014 H2 Group. Multiple-Licensed under the MPL 2.0,
+ * and the EPL 1.0 (http://h2database.com/html/license.html).
  * Initial Developer: H2 Group
  */
 ;
@@ -9,10 +8,10 @@ drop schema if exists pg_catalog;
 create schema pg_catalog;
 
 drop alias if exists pg_convertType;
-create alias pg_convertType deterministic for "org.lealone.plugins.postgresql.PgServer.convertType";
+create alias pg_convertType deterministic for "org.lealone.plugins.postgresql.server.PgServer.convertType";
 
 drop alias if exists pg_get_oid;
-create alias pg_get_oid deterministic for "org.lealone.plugins.postgresql.PgServer.getOid";
+create alias pg_get_oid deterministic for "org.lealone.plugins.postgresql.server.PgServer.getOid";
 
 create table pg_catalog.pg_version as select 2 as version, 2 as version_read;
 --create table pg_catalog.pg_version(version int, version_read int);
@@ -201,31 +200,31 @@ and 1=0;
 grant select on pg_catalog.pg_index to public;
 
 drop alias if exists pg_get_indexdef;
-create alias pg_get_indexdef for "org.lealone.plugins.postgresql.PgServer.getIndexColumn";
+create alias pg_get_indexdef for "org.lealone.plugins.postgresql.server.PgServer.getIndexColumn";
 
 drop alias if exists version;
-create alias version for "org.lealone.plugins.postgresql.PgServer.getVersion";
+create alias version for "org.lealone.plugins.postgresql.server.PgServer.getVersion";
 
 drop alias if exists current_schema;
-create alias current_schema for "org.lealone.plugins.postgresql.PgServer.getCurrentSchema";
+create alias current_schema for "org.lealone.plugins.postgresql.server.PgServer.getCurrentSchema";
 
 drop alias if exists pg_encoding_to_char;
-create alias pg_encoding_to_char for "org.lealone.plugins.postgresql.PgServer.getEncodingName";
+create alias pg_encoding_to_char for "org.lealone.plugins.postgresql.server.PgServer.getEncodingName";
 
 drop alias if exists pg_postmaster_start_time;
-create alias pg_postmaster_start_time for "org.lealone.plugins.postgresql.PgServer.getStartTime";
+create alias pg_postmaster_start_time for "org.lealone.plugins.postgresql.server.PgServer.getStartTime";
 
 drop alias if exists pg_get_userbyid;
-create alias pg_get_userbyid for "org.lealone.plugins.postgresql.PgServer.getUserById";
+create alias pg_get_userbyid for "org.lealone.plugins.postgresql.server.PgServer.getUserById";
 
 drop alias if exists has_database_privilege;
-create alias has_database_privilege for "org.lealone.plugins.postgresql.PgServer.hasDatabasePrivilege";
+create alias has_database_privilege for "org.lealone.plugins.postgresql.server.PgServer.hasDatabasePrivilege";
 
 drop alias if exists has_table_privilege;
-create alias has_table_privilege for "org.lealone.plugins.postgresql.PgServer.hasTablePrivilege";
+create alias has_table_privilege for "org.lealone.plugins.postgresql.server.PgServer.hasTablePrivilege";
 
 drop alias if exists currtid2;
-create alias currtid2 for "org.lealone.plugins.postgresql.PgServer.getCurrentTid";
+create alias currtid2 for "org.lealone.plugins.postgresql.server.PgServer.getCurrentTid";
 
 create table pg_catalog.pg_database(
     oid int,
