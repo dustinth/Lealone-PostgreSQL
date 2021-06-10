@@ -5,7 +5,6 @@
  */
 package org.lealone.plugins.postgresql.server;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -13,6 +12,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.StringReader;
+import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
@@ -62,7 +62,6 @@ public class PgServerConnection extends AsyncConnection {
     private final PgServer server;
     private Connection conn;
     private boolean stop;
-    private DataInputStream dataInRaw;
     private DataInputStream dataIn;
     private OutputStream out;
     private int messageType;
@@ -131,10 +130,7 @@ public class PgServerConnection extends AsyncConnection {
         return new JdbcConnection(ci);
     }
 
-    private void process(int len, int x) throws IOException {
-        byte[] data = DataUtils.newBytes(len);
-        dataInRaw.readFully(data, 0, len);
-        dataIn = new DataInputStream(new ByteArrayInputStream(data, 0, len));
+    private void process(int x) throws IOException {
         switchBlock: switch (x) {
         case 0:
             server.trace("Init");
@@ -146,6 +142,7 @@ public class PgServerConnection extends AsyncConnection {
             } else if (version == 80877103) {
                 server.trace("SSLRequest");
                 out.write('N');
+                out.flush();
             } else {
                 server.trace("StartupMessage");
                 server.trace(" version " + version + " (" + (version >> 16) + "." + (version & 0xff) + ")");
@@ -169,8 +166,8 @@ public class PgServerConnection extends AsyncConnection {
                     // geqo on (Genetic Query Optimization)
                     server.trace(" param " + param + "=" + value);
                 }
-                sendAuthenticationCleartextPassword();
                 initDone = true;
+                sendAuthenticationCleartextPassword();
             }
             break;
         case 'p': {
@@ -829,29 +826,45 @@ public class PgServerConnection extends AsyncConnection {
         Prepared prep;
     }
 
-    private NetBuffer lastBuffer;
+    private final ByteBuffer packetLengthByteBuffer = ByteBuffer.allocateDirect(4);
+    private final ByteBuffer packetLengthByteBufferInitDone = ByteBuffer.allocateDirect(5);
+
+    @Override
+    public ByteBuffer getPacketLengthByteBuffer() {
+        if (initDone)
+            return packetLengthByteBufferInitDone;
+        else
+            return packetLengthByteBuffer;
+    }
+
+    @Override
+    public int getPacketLength() {
+        int len;
+        if (initDone) {
+            packetLengthByteBufferInitDone.get();
+            len = packetLengthByteBufferInitDone.getInt();
+            packetLengthByteBufferInitDone.flip();
+        } else {
+            len = packetLengthByteBuffer.getInt();
+            packetLengthByteBuffer.flip();
+        }
+        return len - 4;
+    }
 
     @Override
     public void handle(NetBuffer buffer) {
+        if (!buffer.isOnlyOnePacket()) {
+            DbException.throwInternalError("NetBuffer must be OnlyOnePacket");
+        }
         if (stop)
             return;
-        if (lastBuffer != null) {
-            buffer = lastBuffer.appendBuffer(buffer);
-            lastBuffer = null;
-        }
-        int length = buffer.length();
-        if (length < 1) {
-            return;
-        }
-
         out = new NetBufferOutputStream(writableChannel, BUFFER_SIZE);
-        dataInRaw = new DataInputStream(new NetBufferInputStream(buffer));
+        dataIn = new DataInputStream(new NetBufferInputStream(buffer));
         try {
-            int pos = 0;
             int x;
             if (initDone) {
-                x = dataInRaw.read();
-                pos++;
+                x = packetLengthByteBufferInitDone.get();
+                packetLengthByteBufferInitDone.clear();
                 if (x < 0) {
                     stop = true;
                     return;
@@ -859,20 +872,15 @@ public class PgServerConnection extends AsyncConnection {
             } else {
                 x = 0;
             }
-
-            while (pos < length) {
-                int packetLength = dataInRaw.readInt();
-                pos += packetLength;
-                packetLength -= 4;
-                parsePacket(packetLength, x);
-            }
-        } catch (Throwable e) {
+            process(x);
+            dataIn.close();
+        } catch (Exception e) {
             logger.error("Parse packet exception", e);
+            try {
+                sendErrorResponse(e);
+            } catch (IOException e1) {
+                logger.error("sendErrorResponse exception", e);
+            }
         }
-    }
-
-    private void parsePacket(int len, int x) throws IOException {
-        process(len, x);
-        out.flush();
     }
 }

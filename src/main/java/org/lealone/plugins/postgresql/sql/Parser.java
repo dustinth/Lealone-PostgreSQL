@@ -4969,6 +4969,33 @@ public class Parser implements SQLParser {
             }
             return command;
         } else {
+            if (readIf("STATEMENT_TIMEOUT")) {
+                readIfEqualOrTo();
+                return new NoOperation(session);
+            } else if (readIf("CLIENT_ENCODING") || readIf("CLIENT_MIN_MESSAGES") || readIf("JOIN_COLLAPSE_LIMIT")) {
+                readIfEqualOrTo();
+                read();
+                return new NoOperation(session);
+            } else if (readIf("DATESTYLE")) {
+                readIfEqualOrTo();
+                if (!readIf("ISO")) {
+                    String s = readString();
+                    if (!equalsToken(s, "ISO")) {
+                        throw getSyntaxError();
+                    }
+                }
+                return new NoOperation(session);
+            } else if (readIf("SEARCH_PATH")) {
+                readIfEqualOrTo();
+                do {
+                    // some PG clients will send single-quoted alias
+                    String s = currentTokenType == VALUE ? readString() : readUniqueIdentifier();
+                    if ("$user".equals(s)) {
+                        continue;
+                    }
+                } while (readIf(","));
+                return new NoOperation(session);
+            }
             // 先看看是否是session级的参数，然后再看是否是database级的
             SetStatement command;
             try {

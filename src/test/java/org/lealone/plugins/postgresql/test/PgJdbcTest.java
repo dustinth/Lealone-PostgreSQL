@@ -18,7 +18,7 @@ import org.lealone.plugins.postgresql.server.PgServer;
 public class PgJdbcTest {
 
     public static Connection getConnection() throws Exception {
-        String url = "jdbc:postgresql://localhost:" + PgServer.DEFAULT_PORT + "/pg_test";
+        String url = "jdbc:postgresql://localhost:" + PgServer.DEFAULT_PORT + "/test";
         Properties info = new Properties();
         info.put("user", "test");
         info.put("password", "test");
