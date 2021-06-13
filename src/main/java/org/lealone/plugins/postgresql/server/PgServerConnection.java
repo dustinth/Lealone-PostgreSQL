@@ -6,12 +6,10 @@
 package org.lealone.plugins.postgresql.server;
 
 import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.Reader;
 import java.io.StringReader;
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.ParameterMetaData;
@@ -42,9 +40,9 @@ import org.lealone.db.Constants;
 import org.lealone.db.SysProperties;
 import org.lealone.net.AsyncConnection;
 import org.lealone.net.NetBuffer;
-import org.lealone.net.NetBufferInputStream;
-import org.lealone.net.NetBufferOutputStream;
 import org.lealone.net.WritableChannel;
+import org.lealone.plugins.postgresql.io.NetBufferInput;
+import org.lealone.plugins.postgresql.io.NetBufferOutput;
 import org.lealone.sql.SQLStatement;
 
 /**
@@ -62,11 +60,8 @@ public class PgServerConnection extends AsyncConnection {
     private final PgServer server;
     private Connection conn;
     private boolean stop;
-    private DataInputStream dataIn;
-    private OutputStream out;
-    private int messageType;
-    private ByteArrayOutputStream outBuffer;
-    private DataOutputStream dataOut;
+    private NetBufferInput in;
+    private NetBufferOutput out;
     private boolean initDone;
     private String userName;
     private String databaseName;
@@ -84,7 +79,7 @@ public class PgServerConnection extends AsyncConnection {
     private String readString() throws IOException {
         ByteArrayOutputStream buff = new ByteArrayOutputStream();
         while (true) {
-            int x = dataIn.read();
+            int x = in.read();
             if (x <= 0) {
                 break;
             }
@@ -93,20 +88,20 @@ public class PgServerConnection extends AsyncConnection {
         return new String(buff.toByteArray(), getEncoding());
     }
 
-    private int readInt() throws IOException {
-        return dataIn.readInt();
+    private int readInt() {
+        return in.readInt();
     }
 
-    private int readShort() throws IOException {
-        return dataIn.readShort();
+    private int readShort() {
+        return in.readShort();
     }
 
-    private byte readByte() throws IOException {
-        return dataIn.readByte();
+    private byte readByte() {
+        return in.readByte();
     }
 
-    private void readFully(byte[] buff) throws IOException {
-        dataIn.readFully(buff);
+    private void readFully(byte[] buff) {
+        in.readFully(buff);
     }
 
     private JdbcConnection createJdbcConnection(String password) throws SQLException {
@@ -719,56 +714,53 @@ public class PgServerConnection extends AsyncConnection {
         sendMessage();
     }
 
-    private void sendBackendKeyData() throws IOException {
+    private void sendBackendKeyData() {
         startMessage('K');
         writeInt(processId);
         writeInt(processId);
         sendMessage();
     }
 
-    private void writeString(String s) throws IOException {
+    private void writeString(String s) {
         writeStringPart(s);
         write(0);
     }
 
-    private void writeStringPart(String s) throws IOException {
-        write(s.getBytes(getEncoding()));
+    private void writeStringPart(String s) {
+        try {
+            write(s.getBytes(getEncoding()));
+        } catch (UnsupportedEncodingException e) {
+            throw DbException.convert(e);
+        }
     }
 
-    private void writeInt(int i) throws IOException {
-        dataOut.writeInt(i);
+    private void writeInt(int i) {
+        out.writeInt(i);
     }
 
-    private void writeShort(int i) throws IOException {
-        dataOut.writeShort(i);
+    private void writeShort(int i) {
+        out.writeShort(i);
     }
 
-    private void write(byte[] data) throws IOException {
-        dataOut.write(data);
+    private void write(byte[] data) {
+        out.write(data);
     }
 
-    private void write(int b) throws IOException {
-        dataOut.write(b);
+    private void write(int b) {
+        out.write(b);
     }
 
     private void startMessage(int newMessageType) {
-        this.messageType = newMessageType;
-        outBuffer = new ByteArrayOutputStream();
-        dataOut = new DataOutputStream(outBuffer);
+        out.write(newMessageType);
+        out.writeInt(0); // 占位
     }
 
-    private void sendMessage() throws IOException {
-        dataOut.flush();
-        byte[] buff = outBuffer.toByteArray();
-        int len = buff.length;
-        dataOut = new DataOutputStream(out);
-        dataOut.write(messageType);
-        dataOut.writeInt(len + 4);
-        dataOut.write(buff);
-        dataOut.flush();
+    private void sendMessage() {
+        out.setInt(1, out.length() - 1); // 回填
+        out.flush();
     }
 
-    private void sendParameterStatus(String param, String value) throws IOException {
+    private void sendParameterStatus(String param, String value) {
         startMessage('S');
         writeString(param);
         writeString(value);
@@ -858,8 +850,8 @@ public class PgServerConnection extends AsyncConnection {
         }
         if (stop)
             return;
-        out = new NetBufferOutputStream(writableChannel, BUFFER_SIZE);
-        dataIn = new DataInputStream(new NetBufferInputStream(buffer));
+        out = new NetBufferOutput(writableChannel, BUFFER_SIZE);
+        in = new NetBufferInput(buffer);
         try {
             int x;
             if (initDone) {
@@ -873,7 +865,7 @@ public class PgServerConnection extends AsyncConnection {
                 x = 0;
             }
             process(x);
-            dataIn.close();
+            in.close();
         } catch (Exception e) {
             logger.error("Parse packet exception", e);
             try {
